@@ -1,6 +1,7 @@
 {
   "name": "opam_of_packagejson",
   "version": "0.0.1",
+  "bin": {"opam_of_packagejson": "opam_of_packagejson.sh"},
   "scripts": {
     "postinstall": "node_modules/bs-platform/bin/bsb.exe"
   },
