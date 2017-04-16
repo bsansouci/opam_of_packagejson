@@ -1,0 +1,8 @@
+{
+  "name": "opam_of_packagejson",
+  "sources": "src",
+  "entries": [{
+    "kind": "native",
+    "main": "Index"
+  }]
+}

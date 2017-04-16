@@ -1,0 +1,11 @@
+{
+  "name": "opam_of_packagejson",
+  "version": "0.0.1",
+  "bin": "./lib/bs/index.native",
+  "scripts": {
+    "postinstall": "node_modules/bs-platform/bin/bsb.exe"
+  },
+  "dependencies": {
+    "bs-platform": "bsansouci/bucklescript#simple-native-compilation"
+  }
+}
