@@ -2,7 +2,7 @@
   "name": "opam_of_packagejson",
   "sources": "src",
   "entries": [{
-    "kind": "native",
+    "kind": "bytecode",
     "main": "Index"
   }]
 }
