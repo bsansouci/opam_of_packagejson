@@ -1,5 +1,11 @@
 let should_gen_install = ref false;
 
+let should_gen_meta = ref false;
+
+let should_gen_opam = ref false;
+
+let destination = ref "";
+
 let batch_files = ref [];
 
 let collect_files filename => batch_files := [filename, ...!batch_files];
@@ -9,27 +15,60 @@ let usage = "Usage: opam_of_pkgjson.exe [options] package.json";
 Arg.parse
   [
     (
+      "-destination",
+      Arg.String (fun str => destination := str),
+      "Path to where the files will be generated."
+    ),
+    (
       "-gen-install",
       Arg.Set should_gen_install,
-      "Generates a <projectName>.install file used by opam to know how to install your library"
+      "Generates a <projectName>.install file used by opam to know how to install your library."
+    ),
+    (
+      "-gen-meta",
+      Arg.Set should_gen_meta,
+      "Generates a META file used by ocamlfind to know where your library is installed after being downloaded from opam."
+    ),
+    (
+      "-gen-opam",
+      Arg.Set should_gen_opam,
+      "Generates an opam file used by opam to know how to publish your library."
     )
   ]
   collect_files
   usage;
 
+
+/** Double check that the directory given is all good. */
+switch (Sys.is_directory !destination) {
+| exception (Sys_error _) =>
+  failwith @@ "Direction passed '" ^ !destination ^ "' couldn't be found."
+| false =>
+  failwith @@ "Direction passed '" ^ !destination ^ "' isn't a directory."
+| true => ()
+};
+
+
+/** Check the packagejson file */
 let packagejson =
   switch !batch_files {
   | [] =>
     failwith "Please call opam_of_pkgjson.exe with a json file to convert to opam."
-  | [packagejson, ..._] => packagejson
+  | [packagejson, ..._] =>
+    if (not (Sys.file_exists packagejson)) {
+      failwith @@ "Json file '" ^ packagejson ^ "' doesn't not found."
+    } else {
+      packagejson
+    }
   };
 
 let ic = open_in packagejson;
 
 let json = Json.parse_json_from_chan ic;
 
-let to_opam_file json => {
-  open Json_types;
+open Json_types;
+
+if !should_gen_opam {
   let b = Buffer.create 1024;
   let pr b fmt => Printf.bprintf b fmt;
   let pr_field b key value => pr b "%s: \"%s\"\n" key value;
@@ -107,74 +146,6 @@ let to_opam_file json => {
           innerMap;
         pr b "]\n"
       | _ => assert false
-      };
-      if !should_gen_install {
-        switch (StringMap.find "install" innerMap) {
-        | exception _ => ()
-        | Obj {map: innerMap} =>
-          let libraryName =
-            switch (StringMap.find "name" map) {
-            | Str {str} => str
-            | _ =>
-              failwith "Couldn't find a name field or isn't a simple string"
-            };
-          let path =
-            switch (StringMap.find "path" innerMap) {
-            | Str {str} => str
-            | _ =>
-              failwith "Couldn't find a path field or isn't a simple string"
-            };
-          switch (StringMap.find "extensions" innerMap) {
-          | exception _ => ()
-          | Arr {content} =>
-            /** Generate the .install file */
-            /* @WINDOWSSUPPORT because of / below */
-            let thing =
-              Install.(
-                `Header (Some libraryName),
-                [
-                  (`Lib, {src: "_build/opam", dst: Some "opam", maybe: false}),
-                  (`Lib, {src: "_build/META", dst: Some "META", maybe: false}),
-                  ...List.map
-                       (
-                         fun v =>
-                           switch v {
-                           | Str {str} => (
-                               `Lib,
-                               {
-                                 src: path ^ "/" ^ libraryName ^ str,
-                                 dst: Some (libraryName ^ str),
-                                 maybe: false
-                               }
-                             )
-                           | _ => assert false
-                           }
-                       )
-                       (Array.to_list content)
-                ]
-              );
-            let oc = open_out (libraryName ^ ".install");
-            Printf.fprintf oc "%s" (Install.to_string thing);
-
-            /** Generate the META file */
-            let metab = Buffer.create 1024;
-            switch (StringMap.find "version" map) {
-            | Str {str: version} => pr metab "version = \"%s\"\n" version
-            | _ => ()
-            };
-            switch (StringMap.find "description" map) {
-            | Str {str: description} =>
-              pr metab "description = \"%s\"\n\n" description
-            | _ => ()
-            };
-            pr metab "archive(byte) = \"%s.cma\"\n" libraryName;
-            pr metab "archive(native) = \"%s.cmxa\"\n" libraryName;
-            let oc = open_out "META";
-            Printf.fprintf oc "%s" (Buffer.contents metab)
-          | _ => assert false
-          }
-        | _ => assert false
-        }
       }
     | _ => assert false
     };
@@ -185,10 +156,96 @@ let to_opam_file json => {
     pr b "]\n";
 
     /** Ocaml version hardcoded for now */
-    pr b "available: [ ocaml-version >= \"4.02\" & ocaml-version < \"4.05\" ]\n"
+    pr
+      b "available: [ ocaml-version >= \"4.02\" & ocaml-version < \"4.05\" ]\n"
   | _ => assert false
   };
-  Buffer.contents b
+  let oc = open_out (!destination ^ "/opam");
+  Buffer.output_buffer oc b
 };
 
-print_string @@ to_opam_file json;
+if !should_gen_install {
+  switch json {
+  | Obj {map} =>
+    let libraryName =
+      switch (StringMap.find "name" map) {
+      | Str {str} => str
+      | _ => failwith "Couldn't find a name field or isn't a simple string"
+      };
+    switch (StringMap.find "opam" map) {
+    | exception _ => ()
+    | Obj {map: innerMap} =>
+      switch (StringMap.find "install" innerMap) {
+      | exception _ => ()
+      | Obj {map: innerMap} =>
+        let path =
+          switch (StringMap.find "path" innerMap) {
+          | Str {str} => str
+          | _ => failwith "Couldn't find a path field or isn't a simple string"
+          };
+        switch (StringMap.find "extensions" innerMap) {
+        | exception _ => ()
+        | Arr {content} =>
+          /** Generate the .install file */
+          /* @WINDOWSSUPPORT because of / below */
+          let thing =
+            Install.(
+              `Header (Some libraryName),
+              [
+                (`Lib, {src: "_build/opam", dst: Some "opam", maybe: false}),
+                (`Lib, {src: "_build/META", dst: Some "META", maybe: false}),
+                ...List.map
+                     (
+                       fun v =>
+                         switch v {
+                         | Str {str} => (
+                             `Lib,
+                             {
+                               src: path ^ "/" ^ libraryName ^ str,
+                               dst: Some (libraryName ^ str),
+                               maybe: false
+                             }
+                           )
+                         | _ => assert false
+                         }
+                     )
+                     (Array.to_list content)
+              ]
+            );
+          let oc = open_out (!destination ^ "/" ^ libraryName ^ ".install");
+          Buffer.output_buffer oc (Install.to_buffer thing)
+        | _ => assert false
+        }
+      | _ => assert false
+      }
+    | _ => assert false
+    }
+  | _ => assert false
+  }
+};
+
+if !should_gen_meta {
+  let pr b fmt => Printf.bprintf b fmt;
+  switch json {
+  | Obj {map} =>
+    let libraryName =
+      switch (StringMap.find "name" map) {
+      | Str {str} => str
+      | _ => failwith "Couldn't find a name field or isn't a simple string"
+      };
+    let metab = Buffer.create 1024;
+    switch (StringMap.find "version" map) {
+    | Str {str: version} => pr metab "version = \"%s\"\n" version
+    | _ => ()
+    };
+    switch (StringMap.find "description" map) {
+    | Str {str: description} => pr metab "description = \"%s\"\n\n" description
+    | _ => ()
+    };
+    pr metab "archive(byte) = \"%s.cma\"\n" libraryName;
+    pr metab "archive(native) = \"%s.cmxa\"\n" libraryName;
+    let oc = open_out (!destination ^ "/META");
+    Buffer.output_buffer oc metab
+  | _ => assert false
+  }
+};

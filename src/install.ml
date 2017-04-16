@@ -38,7 +38,7 @@ let move ?(maybe = false) ?dst src = { src; dst; maybe }
 
 type t = [ `Header of string option ] * (field * move) list
 
-let to_string (`Header h, mvs) =
+let to_buffer (`Header h, mvs) =
   let b = Buffer.create 1024 in
   let pr b fmt = Printf.bprintf b fmt in
   let pr_header b = function None -> () | Some h -> pr b "# %s\n\n" h in
@@ -65,4 +65,4 @@ let to_string (`Header h, mvs) =
   pr_header b h;
   let last = List.fold_left (pr_move b) "" moves in
   pr_field_end b last;
-  Buffer.contents b
+  b
