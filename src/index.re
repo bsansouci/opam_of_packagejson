@@ -4,7 +4,7 @@ let should_gen_meta = ref false;
 
 let should_gen_opam = ref false;
 
-let destination = ref "";
+let destination = ref ".";
 
 let batch_files = ref [];
 
@@ -40,12 +40,14 @@ Arg.parse
 
 
 /** Double check that the directory given is all good. */
-switch (Sys.is_directory !destination) {
-| exception (Sys_error _) =>
-  failwith @@ "Direction passed '" ^ !destination ^ "' couldn't be found."
-| false =>
-  failwith @@ "Direction passed '" ^ !destination ^ "' isn't a directory."
-| true => ()
+if (not (!destination == ".")) {
+  switch (Sys.is_directory !destination) {
+  | exception (Sys_error _) =>
+    failwith @@ "Direction passed '" ^ !destination ^ "' couldn't be found."
+  | false =>
+    failwith @@ "Direction passed '" ^ !destination ^ "' isn't a directory."
+  | true => ()
+  }
 };
 
 
