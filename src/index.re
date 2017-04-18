@@ -200,8 +200,8 @@ if !should_gen_install {
         Install.(
           `Header (Some libraryName),
           [
-            (`Lib, {src: "_build" +|+ "opam", dst: Some "opam", maybe: false}),
-            (`Lib, {src: "_build" +|+ "META", dst: Some "META", maybe: false}),
+            (`Lib, {src: !destination +|+ "opam", dst: Some "opam", maybe: false}),
+            (`Lib, {src: !destination +|+ "META", dst: Some "META", maybe: false}),
             ...List.map
                  (
                    fun str => (
