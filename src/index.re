@@ -1,3 +1,5 @@
+let (+|+) = Filename.concat;
+
 let should_gen_install = ref false;
 
 let should_gen_meta = ref false;
@@ -141,7 +143,7 @@ if !should_gen_opam {
           (
             fun key v =>
               switch v {
-              | Str {str} => pr b "  \"%s\" %s\n" key str
+              | Str {str} => pr b "  \"%s\" { %s }\n" key str
               | _ => assert false
               }
           )
@@ -162,11 +164,21 @@ if !should_gen_opam {
       b "available: [ ocaml-version >= \"4.02\" & ocaml-version < \"4.05\" ]\n"
   | _ => assert false
   };
-  let oc = open_out (!destination ^ "/opam");
+  let oc = open_out (!destination +|+ "opam");
   Buffer.output_buffer oc b
 };
 
 if !should_gen_install {
+  let default_extensions = [
+    ".cmo",
+    ".cmx",
+    ".cmi",
+    ".cmt",
+    ".o",
+    ".cma",
+    ".cmxa",
+    ".a"
+  ];
   switch json {
   | Obj {map} =>
     let libraryName =
@@ -177,49 +189,35 @@ if !should_gen_install {
     switch (StringMap.find "opam" map) {
     | exception _ => ()
     | Obj {map: innerMap} =>
-      switch (StringMap.find "install" innerMap) {
-      | exception _ => ()
-      | Obj {map: innerMap} =>
-        let path =
-          switch (StringMap.find "path" innerMap) {
-          | Str {str} => str
-          | _ => failwith "Couldn't find a path field or isn't a simple string"
-          };
-        switch (StringMap.find "extensions" innerMap) {
-        | exception _ => ()
-        | Arr {content} =>
-          /** Generate the .install file */
-          /* @WINDOWSSUPPORT because of / below */
-          let thing =
-            Install.(
-              `Header (Some libraryName),
-              [
-                (`Lib, {src: "_build/opam", dst: Some "opam", maybe: false}),
-                (`Lib, {src: "_build/META", dst: Some "META", maybe: false}),
-                ...List.map
-                     (
-                       fun v =>
-                         switch v {
-                         | Str {str} => (
-                             `Lib,
-                             {
-                               src: path ^ "/" ^ libraryName ^ str,
-                               dst: Some (libraryName ^ str),
-                               maybe: false
-                             }
-                           )
-                         | _ => assert false
-                         }
-                     )
-                     (Array.to_list content)
-              ]
-            );
-          let oc = open_out (!destination ^ "/" ^ libraryName ^ ".install");
-          Buffer.output_buffer oc (Install.to_buffer thing)
-        | _ => assert false
-        }
-      | _ => assert false
-      }
+      let path =
+        switch (StringMap.find "installPath" innerMap) {
+        | Str {str} => str
+        | _ => failwith "Couldn't find a path field or isn't a simple string"
+        };
+
+      /** Generate the .install file */
+      let thing =
+        Install.(
+          `Header (Some libraryName),
+          [
+            (`Lib, {src: "_build" +|+ "opam", dst: Some "opam", maybe: false}),
+            (`Lib, {src: "_build" +|+ "META", dst: Some "META", maybe: false}),
+            ...List.map
+                 (
+                   fun str => (
+                     `Lib,
+                     {
+                       src: path +|+ (libraryName ^ str),
+                       dst: Some (libraryName ^ str),
+                       maybe: false
+                     }
+                   )
+                 )
+                 default_extensions
+          ]
+        );
+      let oc = open_out (!destination +|+ (libraryName ^ ".install"));
+      Buffer.output_buffer oc (Install.to_buffer thing)
     | _ => assert false
     }
   | _ => assert false
@@ -246,7 +244,7 @@ if !should_gen_meta {
     };
     pr metab "archive(byte) = \"%s.cma\"\n" libraryName;
     pr metab "archive(native) = \"%s.cmxa\"\n" libraryName;
-    let oc = open_out (!destination ^ "/META");
+    let oc = open_out (!destination +|+ "META");
     Buffer.output_buffer oc metab
   | _ => assert false
   }
