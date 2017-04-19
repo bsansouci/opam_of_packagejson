@@ -191,8 +191,19 @@ if !should_gen_install {
     | Obj {map: innerMap} =>
       let path =
         switch (StringMap.find "installPath" innerMap) {
+        | exception _ =>
+          failwith "Couldn't find a `installPath` field or isn't a simple string"
         | Str {str} => str
-        | _ => failwith "Couldn't find a path field or isn't a simple string"
+        | _ =>
+          failwith "Couldn't find a `installPath` field or isn't a simple string"
+        };
+      let mainModule =
+        switch (StringMap.find "mainModule" innerMap) {
+        | exception _ =>
+          failwith "Couldn't find a `mainModule` field inside `opam` or isn't a simple string"
+        | Str {str} => str
+        | _ =>
+          failwith "Couldn't find a `mainModule` field inside `opam` or isn't a simple string"
         };
 
       /** Generate the .install file */
@@ -200,15 +211,21 @@ if !should_gen_install {
         Install.(
           `Header (Some libraryName),
           [
-            (`Lib, {src: !destination +|+ "opam", dst: Some "opam", maybe: false}),
-            (`Lib, {src: !destination +|+ "META", dst: Some "META", maybe: false}),
+            (
+              `Lib,
+              {src: !destination +|+ "opam", dst: Some "opam", maybe: false}
+            ),
+            (
+              `Lib,
+              {src: !destination +|+ "META", dst: Some "META", maybe: false}
+            ),
             ...List.map
                  (
                    fun str => (
                      `Lib,
                      {
-                       src: path +|+ (libraryName ^ str),
-                       dst: Some (libraryName ^ str),
+                       src: path +|+ (mainModule ^ str),
+                       dst: Some (mainModule ^ str),
                        maybe: false
                      }
                    )
@@ -228,24 +245,33 @@ if !should_gen_meta {
   let pr b fmt => Printf.bprintf b fmt;
   switch json {
   | Obj {map} =>
-    let libraryName =
-      switch (StringMap.find "name" map) {
-      | Str {str} => str
-      | _ => failwith "Couldn't find a name field or isn't a simple string"
+    switch (StringMap.find "opam" map) {
+    | exception _ => ()
+    | Obj {map: innerMap} =>
+      let mainModule =
+        switch (StringMap.find "mainModule" innerMap) {
+        | exception _ =>
+          failwith "Couldn't find a `mainModule` field inside `opam` or isn't a simple string"
+        | Str {str} => str
+        | _ =>
+          failwith "Couldn't find a `mainModule` field inside `opam` or isn't a simple string"
+        };
+      let metab = Buffer.create 1024;
+      switch (StringMap.find "version" map) {
+      | Str {str: version} => pr metab "version = \"%s\"\n" version
+      | _ => ()
       };
-    let metab = Buffer.create 1024;
-    switch (StringMap.find "version" map) {
-    | Str {str: version} => pr metab "version = \"%s\"\n" version
-    | _ => ()
-    };
-    switch (StringMap.find "description" map) {
-    | Str {str: description} => pr metab "description = \"%s\"\n\n" description
-    | _ => ()
-    };
-    pr metab "archive(byte) = \"%s.cma\"\n" libraryName;
-    pr metab "archive(native) = \"%s.cmxa\"\n" libraryName;
-    let oc = open_out (!destination +|+ "META");
-    Buffer.output_buffer oc metab
+      switch (StringMap.find "description" map) {
+      | Str {str: description} =>
+        pr metab "description = \"%s\"\n\n" description
+      | _ => ()
+      };
+      pr metab "archive(byte) = \"%s.cma\"\n" mainModule;
+      pr metab "archive(native) = \"%s.cmxa\"\n" mainModule;
+      let oc = open_out (!destination +|+ "META");
+      Buffer.output_buffer oc metab
+    | _ => assert false
+    }
   | _ => assert false
   }
 };
