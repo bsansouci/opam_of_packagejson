@@ -94,11 +94,19 @@ if !should_gen_opam {
   | Obj {map} =>
     /** Yup hardcoding the version number */
     pr b "opam-version: \"1.2\"\n";
+    let opamMap =
+      switch (StringMap.find "opam" map) {
+      | exception _ => None
+      | Obj {map: innerMap} => Some innerMap
+      | _ => assert false
+      };
+    switch opamMap {
+    | Some opamMap => pr_field_custom opamMap "libraryName" "name"
+    | _ => ignore @@ (map ||>> "name")
+    };
 
     /** Print the simple fields first */
-    ignore @@ (
-      map ||>> "name" ||>> "version" ||>> "license" ||>> "tags" ||>> "homepage"
-    );
+    ignore @@ (map ||>> "version" ||>> "license" ||>> "tags" ||>> "homepage");
 
     /** Slightly less simple since they require a different name */
     pr_field_custom map "url" "dev-repo";
@@ -132,10 +140,9 @@ if !should_gen_opam {
     };
 
     /** Dependencies */
-    switch (StringMap.find "opam" map) {
-    | exception _ => ()
-    | Obj {map: innerMap} =>
-      switch (StringMap.find "dependencies" innerMap) {
+    switch opamMap {
+    | Some opamMap =>
+      switch (StringMap.find "dependencies" opamMap) {
       | exception _ => ()
       | Obj {map: innerMap} =>
         pr b "depends: [\n";
@@ -151,7 +158,7 @@ if !should_gen_opam {
         pr b "]\n"
       | _ => assert false
       }
-    | _ => assert false
+    | None => ()
     };
 
     /** Build command */
@@ -181,29 +188,40 @@ if !should_gen_install {
   ];
   switch json {
   | Obj {map} =>
-    let libraryName =
-      switch (StringMap.find "name" map) {
-      | Str {str} => str
-      | _ => failwith "Couldn't find a name field or isn't a simple string"
-      };
     switch (StringMap.find "opam" map) {
     | exception _ => ()
     | Obj {map: innerMap} =>
-      let path =
-        switch (StringMap.find "installPath" innerMap) {
+      let libraryName =
+        switch (StringMap.find "libraryName" innerMap) {
         | exception _ =>
-          failwith "Couldn't find a `installPath` field or isn't a simple string"
+          switch (StringMap.find "name" map) {
+          | exception _ => failwith "Field `name` didn't exist."
+          | Str {str} => str
+          | _ => failwith "Field `name` didn't exist."
+          }
         | Str {str} => str
         | _ =>
-          failwith "Couldn't find a `installPath` field or isn't a simple string"
+          failwith "Field `libraryName` inside field `opam` wasn't a simple string."
+        };
+      let path =
+        switch (StringMap.find "installPath" innerMap) {
+        /* Default install path is _build/src */
+        | exception _ => "_build/src"
+        | Str {str} => str
+        | _ =>
+          failwith "Couldn't find a `installPath` field or isn't a simple string."
         };
       let mainModule =
         switch (StringMap.find "mainModule" innerMap) {
         | exception _ =>
-          failwith "Couldn't find a `mainModule` field inside `opam` or isn't a simple string"
+          switch (StringMap.find "name" map) {
+          | exception _ => failwith "Field `name` doesn't exist."
+          | Str {str} => str
+          | _ => failwith "Field `name` isn't a simple string."
+          }
         | Str {str} => str
         | _ =>
-          failwith "Couldn't find a `mainModule` field inside `opam` or isn't a simple string"
+          failwith "Field `mainModule` inside field `opam` isn't a simple string."
         };
 
       /** Generate the .install file */
@@ -251,7 +269,11 @@ if !should_gen_meta {
       let mainModule =
         switch (StringMap.find "mainModule" innerMap) {
         | exception _ =>
-          failwith "Couldn't find a `mainModule` field inside `opam` or isn't a simple string"
+          switch (StringMap.find "name" map) {
+          | exception _ => failwith "Field `name` doesn't exist."
+          | Str {str} => str
+          | _ => failwith "Field `name` isn't a simple string."
+          }
         | Str {str} => str
         | _ =>
           failwith "Couldn't find a `mainModule` field inside `opam` or isn't a simple string"
