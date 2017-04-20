@@ -180,7 +180,6 @@ if !should_gen_install {
     ".cmo",
     ".cmx",
     ".cmi",
-    ".cmt",
     ".o",
     ".cma",
     ".cmxa",
