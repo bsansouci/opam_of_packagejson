@@ -2,6 +2,7 @@
   "name": "opam_of_packagejson",
   "version": "0.0.4",
   "bin": {"opam_of_packagejson": "opam_of_packagejson.js"},
+  "description": "Simple tool to generate META, opam and .install files.",
   "scripts": {
     "prepublish": "bsb && webpack --target node lib/js/src/index.js lib/js/app.js"
   },

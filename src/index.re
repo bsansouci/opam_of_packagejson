@@ -185,82 +185,91 @@ Io.readFile
         ];
         switch json {
         | Obj {map} =>
-          switch (StringMap.find "opam" map) {
-          | exception _ => ()
-          | Obj {map: innerMap} =>
-            let libraryName =
-              switch (StringMap.find "libraryName" innerMap) {
-              | exception _ =>
+          let (libraryName, path, mainModule) =
+            switch (StringMap.find "opam" map) {
+            | exception _ =>
+              let name =
                 switch (StringMap.find "name" map) {
                 | exception _ => failwith "Field `name` didn't exist."
                 | Str {str} => str
                 | _ => failwith "Field `name` didn't exist."
-                }
-              | Str {str} => str
-              | _ =>
-                failwith "Field `libraryName` inside field `opam` wasn't a simple string."
-              };
-            let path =
-              switch (StringMap.find "installPath" innerMap) {
-              /* Default install path is _build/src */
-              | exception _ => "_build/src"
-              | Str {str} => str
-              | _ =>
-                failwith "Couldn't find a `installPath` field or isn't a simple string."
-              };
-            let mainModule =
-              switch (StringMap.find "mainModule" innerMap) {
-              | exception _ =>
-                switch (StringMap.find "name" map) {
-                | exception _ => failwith "Field `name` doesn't exist."
+                };
+              (name, "_build/src", name)
+            | Obj {map: innerMap} =>
+              let libraryName =
+                switch (StringMap.find "libraryName" innerMap) {
+                | exception _ =>
+                  switch (StringMap.find "name" map) {
+                  | exception _ => failwith "Field `name` didn't exist."
+                  | Str {str} => str
+                  | _ => failwith "Field `name` didn't exist."
+                  }
                 | Str {str} => str
-                | _ => failwith "Field `name` isn't a simple string."
-                }
-              | Str {str} => str
-              | _ =>
-                failwith "Field `mainModule` inside field `opam` isn't a simple string."
-              };
+                | _ =>
+                  failwith "Field `libraryName` inside field `opam` wasn't a simple string."
+                };
+              let path =
+                switch (StringMap.find "installPath" innerMap) {
+                /* Default install path is _build/src */
+                | exception _ => "_build/src"
+                | Str {str} => str
+                | _ =>
+                  failwith "Couldn't find a `installPath` field or isn't a simple string."
+                };
+              let mainModule =
+                switch (StringMap.find "mainModule" innerMap) {
+                | exception _ =>
+                  switch (StringMap.find "name" map) {
+                  | exception _ => failwith "Field `name` doesn't exist."
+                  | Str {str} => str
+                  | _ => failwith "Field `name` isn't a simple string."
+                  }
+                | Str {str} => str
+                | _ =>
+                  failwith "Field `mainModule` inside field `opam` isn't a simple string."
+                };
+              (libraryName, path, mainModule)
+            | _ => assert false
+            };
 
-            /** Generate the .install file */
-            let thing =
-              Install.(
-                `Header (Some libraryName),
-                [
-                  (
-                    `Lib,
-                    {
-                      src: !destination +|+ "opam",
-                      dst: Some "opam",
-                      maybe: false
-                    }
-                  ),
-                  (
-                    `Lib,
-                    {
-                      src: !destination +|+ "META",
-                      dst: Some "META",
-                      maybe: false
-                    }
-                  ),
-                  ...List.map
-                       (
-                         fun str => (
-                           `Lib,
-                           {
-                             src: path +|+ (mainModule ^ str),
-                             dst: Some (mainModule ^ str),
-                             maybe: false
-                           }
-                         )
+          /** Generate the .install file */
+          let thing =
+            Install.(
+              `Header (Some libraryName),
+              [
+                (
+                  `Lib,
+                  {
+                    src: !destination +|+ "opam",
+                    dst: Some "opam",
+                    maybe: false
+                  }
+                ),
+                (
+                  `Lib,
+                  {
+                    src: !destination +|+ "META",
+                    dst: Some "META",
+                    maybe: false
+                  }
+                ),
+                ...List.map
+                     (
+                       fun str => (
+                         `Lib,
+                         {
+                           src: path +|+ (mainModule ^ str),
+                           dst: Some (mainModule ^ str),
+                           maybe: false
+                         }
                        )
-                       default_extensions
-                ]
-              );
-            Io.writeFile
-              (!destination +|+ (libraryName ^ ".install"))
-              (Buffer.contents (Install.to_buffer thing))
-          | _ => assert false
-          }
+                     )
+                     default_extensions
+              ]
+            );
+          Io.writeFile
+            (!destination +|+ (libraryName ^ ".install"))
+            (Buffer.contents (Install.to_buffer thing))
         | _ => assert false
         }
       };
@@ -268,10 +277,15 @@ Io.readFile
         let pr b fmt => Printf.bprintf b fmt;
         switch json {
         | Obj {map} =>
-          switch (StringMap.find "opam" map) {
-          | exception _ => ()
-          | Obj {map: innerMap} =>
-            let mainModule =
+          let mainModule =
+            switch (StringMap.find "opam" map) {
+            | exception _ =>
+              switch (StringMap.find "name" map) {
+              | exception _ => failwith "Field `name` doesn't exist."
+              | Str {str} => str
+              | _ => failwith "Field `name` isn't a simple string."
+              }
+            | Obj {map: innerMap} =>
               switch (StringMap.find "mainModule" innerMap) {
               | exception _ =>
                 switch (StringMap.find "name" map) {
@@ -282,22 +296,27 @@ Io.readFile
               | Str {str} => str
               | _ =>
                 failwith "Couldn't find a `mainModule` field inside `opam` or isn't a simple string"
-              };
-            let metab = Buffer.create 1024;
+              }
+            | _ => assert false
+            };
+          let metab = Buffer.create 1024;
+          let version =
             switch (StringMap.find "version" map) {
-            | Str {str: version} => pr metab "version = \"%s\"\n" version
-            | _ => ()
+            | exception _ => failwith "Field `version` doesn't exist. "
+            | Str {str: version} => version
+            | _ => failwith "Field `version` was not a simple string."
             };
+          let description =
             switch (StringMap.find "description" map) {
-            | Str {str: description} =>
-              pr metab "description = \"%s\"\n\n" description
-            | _ => ()
+            | exception _ => failwith "Field `description` doesn't exist. "
+            | Str {str: description} => description
+            | _ => failwith "Field `description` was not a simple string."
             };
-            pr metab "archive(byte) = \"%s.cma\"\n" mainModule;
-            pr metab "archive(native) = \"%s.cmxa\"\n" mainModule;
-            Io.writeFile (!destination +|+ "META") (Buffer.contents metab)
-          | _ => assert false
-          }
+          pr metab "version = \"%s\"\n" version;
+          pr metab "description = \"%s\"\n\n" description;
+          pr metab "archive(byte) = \"%s.cma\"\n" mainModule;
+          pr metab "archive(native) = \"%s.cmxa\"\n" mainModule;
+          Io.writeFile (!destination +|+ "META") (Buffer.contents metab)
         | _ => assert false
         }
       }
