@@ -1,11 +1,12 @@
 {
   "name": "opam_of_packagejson",
-  "version": "0.0.1",
-  "bin": {"opam_of_packagejson": "opam_of_packagejson.sh"},
+  "version": "0.0.4",
+  "bin": {"opam_of_packagejson": "opam_of_packagejson.js"},
   "scripts": {
-    "postinstall": "node_modules/bs-platform/bin/bsb.exe"
+    "prepublish": "bsb && webpack --target node lib/js/src/index.js lib/js/app.js"
   },
-  "dependencies": {
-    "bs-platform": "bsansouci/bucklescript#simple-native-compilation"
+  "devDependencies": {
+    "bs-platform": "*",
+    "webpack": "*"
   }
 }

@@ -564,7 +564,7 @@ let
       (
         let ofs = lexbuf.lex_start_pos in
         let len = lexbuf.lex_curr_pos - ofs in
-        Buffer.add_substring buf lexbuf.lex_buffer ofs len;
+        Buffer.add_subbytes buf lexbuf.lex_buffer ofs len;
 
         scan_string buf start lexbuf
       )

@@ -1,8 +1,4 @@
 {
   "name": "opam_of_packagejson",
   "sources": "src",
-  "entries": [{
-    "kind": "bytecode",
-    "main": "Index"
-  }]
 }
