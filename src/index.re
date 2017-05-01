@@ -110,14 +110,68 @@ Io.readFile
           /** Slightly less simple since they require a different name */
           pr_field_custom map "url" "dev-repo";
           pr_field_custom map "bugs" "bugs-reports";
-          pr_field_custom map "author" "maintainer";
+
+          /** `author` can either be "author": "Benjamin San Souci <benjamin.sansouci@gmail.com>" or
+              "author": {
+                "name": "Benjamin San Souci",
+                "email": "benjamin.sansouci@gmail.com"
+              }
+
+              Same for contributor.
+              */
           switch (StringMap.find "author" map) {
-          | Str {str} =>
+          | exception _ => failwith "Field `author` not found but required."
+          | Str {str} => pr b "maintainer: \"%s\"\n" str
+          | Obj {map: innerMap} =>
+            let name =
+              switch (StringMap.find "name" innerMap) {
+              | exception _ =>
+                failwith "Field `name` inside `author` not found."
+              | Str {str} => str
+              | _ => failwith "Field `name` should have type string."
+              };
+            let email =
+              switch (StringMap.find "email" innerMap) {
+              | exception _ =>
+                failwith "Field `email` inside `author` not found."
+              | Str {str} => str
+              | _ => failwith "Field `email` should have type string."
+              };
+            pr b "maintainer: %s <%s>\n" name email
+          | _ =>
+            failwith "Field `author` should be a string or an object containing the fields `name` and `email`."
+          };
+          switch (StringMap.find "contributors" map) {
+          | exception _ =>
+            failwith "Field `contributors` not found but required."
+          | Arr {content} =>
             pr b "authors: [\n";
-            pr b "  \"%s\"\n" str;
+            Array.iter (
+              fun x =>
+                switch x {
+                | Str {str} => pr b "  \"%s\"\n" str
+                | Obj {map: innerMap} =>
+                  let name =
+                    switch (StringMap.find "name" innerMap) {
+                    | exception _ =>
+                      failwith "Field `name` inside `contributor` not found."
+                    | Str {str} => str
+                    | _ => failwith "Field `name` should have type string."
+                    };
+                  let email =
+                    switch (StringMap.find "email" innerMap) {
+                    | exception _ =>
+                      failwith "Field `email` inside `contributor` not found."
+                    | Str {str} => str
+                    | _ => failwith "Field `email` should have type string."
+                    };
+                  pr b "  \"%s <%s>\"\n" name email
+                | _ => failwith "Field `contributor` should be an array of strings or objects with a `name` and `email` fields."
+                }
+            ) content;
             pr b "]\n"
-          | exception _ => ()
-          | _ => assert false
+          | _ =>
+            failwith "Field `contributor` should be a string or an object containing the fields `name` and `email`."
           };
 
           /** Array fields */
