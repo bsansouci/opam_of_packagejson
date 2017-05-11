@@ -137,7 +137,7 @@ Io.readFile
               | Str {str} => str
               | _ => failwith "Field `email` should have type string."
               };
-            pr b "maintainer: %s <%s>\n" name email
+            pr b "maintainer: \"%s <%s>\"\n" name email
           | _ =>
             failwith "Field `author` should be a string or an object containing the fields `name` and `email`."
           };
