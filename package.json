@@ -1,6 +1,6 @@
 {
   "name": "opam_of_packagejson",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "bin": {"opam_of_packagejson": "opam_of_packagejson.js"},
   "description": "Simple tool to generate META, opam and .install files.",
   "scripts": {
