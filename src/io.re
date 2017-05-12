@@ -8,4 +8,4 @@ let ifErrorThrow : err => unit = [%bs.raw {|function(err) {
   if (err) throw err;
 }|}];
 
-external writeFile : string => string => unit = "writeFile" [@@bs.module "fs"];
+external writeFile : string => string => unit = "writeFileSync" [@@bs.module "fs"];

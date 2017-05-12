@@ -44,10 +44,9 @@ Arg.parse
 /** Double check that the directory given is all good. */
 if (not (!destination == ".")) {
   switch (Sys.is_directory !destination) {
-  | exception (Sys_error _) =>
+  | exception Sys_error _ =>
     failwith @@ "Direction passed '" ^ !destination ^ "' couldn't be found."
-  | false =>
-    failwith @@ "Direction passed '" ^ !destination ^ "' isn't a directory."
+  | false => failwith @@ "Direction passed '" ^ !destination ^ "' isn't a directory."
   | true => ()
   }
 };
@@ -56,8 +55,7 @@ if (not (!destination == ".")) {
 /** Check the packagejson file */
 let packagejson =
   switch !batch_files {
-  | [] =>
-    failwith "Please call opam_of_pkgjson.exe with a json file to convert to opam."
+  | [] => failwith "Please call opam_of_pkgjson.exe with a json file to convert to opam."
   | [packagejson, ..._] => packagejson
   };
 
@@ -103,13 +101,29 @@ Io.readFile
           };
 
           /** Print the simple fields first */
-          ignore @@ (
-            map ||>> "version" ||>> "license" ||>> "tags" ||>> "homepage"
-          );
+          ignore @@ (map ||>> "version" ||>> "license" ||>> "tags" ||>> "homepage");
 
           /** Slightly less simple since they require a different name */
-          pr_field_custom map "url" "dev-repo";
-          pr_field_custom map "bugs" "bugs-reports";
+          pr_field_custom map "bugs" "bug-reports";
+
+          /** Example:
+                 "repository": {
+                    "type": "git",
+                    "url" : "https://github.com/facebookincubator/immutable-re.git"
+                  },
+              */
+          switch (StringMap.find "repository" map) {
+          | Obj {map: innerMap} =>
+            let url =
+              switch (StringMap.find "url" innerMap) {
+              | Str {str} => str
+              | exception _ => failwith "Field `url` not found inside `repository`"
+              | _ => failwith "Field `url` should be a string."
+              };
+            pr b "dev-repo: \"%s\"\n" url
+          | exception _ => failwith "Field `repository` not found."
+          | _ => failwith "Field `repository` should be an object with a `type` and a `url`."
+          };
 
           /** `author` can either be "author": "Benjamin San Souci <benjamin.sansouci@gmail.com>" or
               "author": {
@@ -125,15 +139,13 @@ Io.readFile
           | Obj {map: innerMap} =>
             let name =
               switch (StringMap.find "name" innerMap) {
-              | exception _ =>
-                failwith "Field `name` inside `author` not found."
+              | exception _ => failwith "Field `name` inside `author` not found."
               | Str {str} => str
               | _ => failwith "Field `name` should have type string."
               };
             let email =
               switch (StringMap.find "email" innerMap) {
-              | exception _ =>
-                failwith "Field `email` inside `author` not found."
+              | exception _ => failwith "Field `email` inside `author` not found."
               | Str {str} => str
               | _ => failwith "Field `email` should have type string."
               };
@@ -142,33 +154,33 @@ Io.readFile
             failwith "Field `author` should be a string or an object containing the fields `name` and `email`."
           };
           switch (StringMap.find "contributors" map) {
-          | exception _ =>
-            failwith "Field `contributors` not found but required."
+          | exception _ => failwith "Field `contributors` not found but required."
           | Arr {content} =>
             pr b "authors: [\n";
-            Array.iter (
-              fun x =>
-                switch x {
-                | Str {str} => pr b "  \"%s\"\n" str
-                | Obj {map: innerMap} =>
-                  let name =
-                    switch (StringMap.find "name" innerMap) {
-                    | exception _ =>
-                      failwith "Field `name` inside `contributor` not found."
-                    | Str {str} => str
-                    | _ => failwith "Field `name` should have type string."
-                    };
-                  let email =
-                    switch (StringMap.find "email" innerMap) {
-                    | exception _ =>
-                      failwith "Field `email` inside `contributor` not found."
-                    | Str {str} => str
-                    | _ => failwith "Field `email` should have type string."
-                    };
-                  pr b "  \"%s <%s>\"\n" name email
-                | _ => failwith "Field `contributor` should be an array of strings or objects with a `name` and `email` fields."
-                }
-            ) content;
+            Array.iter
+              (
+                fun x =>
+                  switch x {
+                  | Str {str} => pr b "  \"%s\"\n" str
+                  | Obj {map: innerMap} =>
+                    let name =
+                      switch (StringMap.find "name" innerMap) {
+                      | exception _ => failwith "Field `name` inside `contributor` not found."
+                      | Str {str} => str
+                      | _ => failwith "Field `name` should have type string."
+                      };
+                    let email =
+                      switch (StringMap.find "email" innerMap) {
+                      | exception _ => failwith "Field `email` inside `contributor` not found."
+                      | Str {str} => str
+                      | _ => failwith "Field `email` should have type string."
+                      };
+                    pr b "  \"%s <%s>\"\n" name email
+                  | _ =>
+                    failwith "Field `contributor` should be an array of strings or objects with a `name` and `email` fields."
+                  }
+              )
+              content;
             pr b "]\n"
           | _ =>
             failwith "Field `contributor` should be a string or an object containing the fields `name` and `email`."
@@ -220,23 +232,13 @@ Io.readFile
           pr b "]\n";
 
           /** Ocaml version hardcoded for now */
-          pr
-            b
-            "available: [ ocaml-version >= \"4.02\" & ocaml-version < \"4.05\" ]\n"
+          pr b "available: [ ocaml-version >= \"4.02\" & ocaml-version < \"4.05\" ]\n"
         | _ => assert false
         };
         Io.writeFile (!destination +|+ "opam") (Buffer.contents b)
       };
       if !should_gen_install {
-        let default_extensions = [
-          ".cmo",
-          ".cmx",
-          ".cmi",
-          ".o",
-          ".cma",
-          ".cmxa",
-          ".a"
-        ];
+        let default_extensions = [".cmo", ".cmx", ".cmi", ".o", ".cma", ".cmxa", ".a"];
         switch json {
         | Obj {map} =>
           let (libraryName, path, mainModule) =
@@ -259,16 +261,14 @@ Io.readFile
                   | _ => failwith "Field `name` didn't exist."
                   }
                 | Str {str} => str
-                | _ =>
-                  failwith "Field `libraryName` inside field `opam` wasn't a simple string."
+                | _ => failwith "Field `libraryName` inside field `opam` wasn't a simple string."
                 };
               let path =
                 switch (StringMap.find "installPath" innerMap) {
                 /* Default install path is _build/src */
                 | exception _ => "_build/src"
                 | Str {str} => str
-                | _ =>
-                  failwith "Couldn't find a `installPath` field or isn't a simple string."
+                | _ => failwith "Couldn't find a `installPath` field or isn't a simple string."
                 };
               let mainModule =
                 switch (StringMap.find "mainModule" innerMap) {
@@ -279,8 +279,7 @@ Io.readFile
                   | _ => failwith "Field `name` isn't a simple string."
                   }
                 | Str {str} => str
-                | _ =>
-                  failwith "Field `mainModule` inside field `opam` isn't a simple string."
+                | _ => failwith "Field `mainModule` inside field `opam` isn't a simple string."
                 };
               (libraryName, path, mainModule)
             | _ => assert false
@@ -291,22 +290,8 @@ Io.readFile
             Install.(
               `Header (Some libraryName),
               [
-                (
-                  `Lib,
-                  {
-                    src: !destination +|+ "opam",
-                    dst: Some "opam",
-                    maybe: false
-                  }
-                ),
-                (
-                  `Lib,
-                  {
-                    src: !destination +|+ "META",
-                    dst: Some "META",
-                    maybe: false
-                  }
-                ),
+                (`Lib, {src: !destination +|+ "opam", dst: Some "opam", maybe: false}),
+                (`Lib, {src: !destination +|+ "META", dst: Some "META", maybe: false}),
                 ...List.map
                      (
                        fun str => (
