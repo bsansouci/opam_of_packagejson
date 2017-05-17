@@ -6,6 +6,8 @@
   "bin": {"opam_of_packagejson": "opam_of_packagejson.js"},
   "description": "Simple tool to generate META, opam and .install files.",
   "scripts": {
+    "build-node": "bsb",
+    "build-native": "make build",
     "prepublish": "bsb && webpack --target node lib/js/src/nodeEntrypoint.js lib/js/app.js"
   },
   "devDependencies": {
