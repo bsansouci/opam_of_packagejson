@@ -1,6 +1,6 @@
 opam-version: "1.2"
 name: "opam_of_packagejson"
-version: "0.0.8"
+version: "0.0.9"
 dev-repo: "https://github.com/bsansouci/opam_of_packagejson.git"
 homepage: "https://github.com/bsansouci/opam_of_packagejson"
 bug-reports: "https://github.com/bsansouci/opam_of_packagejson/issues"
