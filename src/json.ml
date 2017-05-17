@@ -13,7 +13,7 @@ type error =
   | Expect_eof 
   (* | Trailing_comma_in_obj *)
   (* | Trailing_comma_in_array *)
-exception Error of error * Lexing.position * Lexing.position;;
+(* exception Error of error * Lexing.position * Lexing.position;; *)
 
 let fprintf  = Format.fprintf
 let report_error ppf = function

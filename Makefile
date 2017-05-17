@@ -1,2 +1,2 @@
 build:
-	rebuild src/nativeEntrypoint.native
+	rebuild src/opam_of_packagejson.native
