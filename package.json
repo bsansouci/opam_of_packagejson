@@ -1,6 +1,6 @@
 {
   "name": "opam_of_packagejson",
-  "version": "0.0.9",
+  "version": "0.1.0",
   "repository": {"type": "git", "url": "https://github.com/bsansouci/opam_of_packagejson.git"},
   "author": "Benjamin San Souci <benjamin.sansouci@gmail.com>",
   "bin": {"opam_of_packagejson": "opam_of_packagejson.js"},
