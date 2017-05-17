@@ -74,12 +74,6 @@ module Run
                 m
               | _ => assert false
               };
-            let pr_field_custom m field newName =>
-              switch (StringMap.find field m) {
-              | exception _ => ()
-              | Str {str} => pr_field b newName str
-              | _ => assert false
-              };
             switch json {
             | Obj {map} =>
               /** Yup hardcoding the version number */
@@ -91,20 +85,45 @@ module Run
                 | _ => assert false
                 };
               switch opamMap {
-              | Some opamMap => pr_field_custom opamMap "libraryName" "name"
-              | _ => ignore @@ (map ||>> "name")
+              | Some opamMap =>
+                let name =
+                  switch (StringMap.find "libraryName" opamMap) {
+                  | exception _ =>
+                    switch (StringMap.find "name" map) {
+                    | exception _ => failwith "Field `name` doesn't exist."
+                    | Str {str} => str
+                    | _ => failwith "Field `name` doesn't exist."
+                    }
+                  | Str {str} => str
+                  | _ => failwith "Field `libraryName` isn't a string."
+                  };
+                pr b "name: \"%s\"\n" name
+              | _ => ignore (map ||>> "name")
               };
 
               /** Print the simple fields first */
-              ignore @@ (map ||>> "version" ||>> "license" ||>> "tags" ||>> "homepage");
-
-              /** Slightly less simple since they require a different name */
-              pr_field_custom map "bugs" "bug-reports";
+              ignore @@ (map ||>> "version" ||>> "license" ||>> "tags");
+              let homepage_found =
+                switch (StringMap.find "homepage" map) {
+                | exception _ => false
+                | Str {str} =>
+                  pr b "homepage: \"%s\"\n" str;
+                  true
+                | _ => failwith "Field `homepage` wasn't a string."
+                };
+              let bugs_found =
+                switch (StringMap.find "bugs" map) {
+                | exception _ => false
+                | Str {str} =>
+                  pr b "bug-reports: \"%s\"\n" str;
+                  true
+                | _ => failwith "Field `bugs` wasn't a string."
+                };
 
               /** Example:
                      "repository": {
                         "type": "git",
-                        "url" : "https://github.com/facebookincubator/immutable-re.git"
+                        "url" : "https://github.com/facebookincubator/immutable-re"
                       },
                   */
               switch (StringMap.find "repository" map) {
@@ -115,7 +134,34 @@ module Run
                   | exception _ => failwith "Field `url` not found inside `repository`"
                   | _ => failwith "Field `url` should be a string."
                   };
-                pr b "dev-repo: \"%s\"\n" url
+                let t =
+                  switch (StringMap.find "type" innerMap) {
+                  | Str {str} => str
+                  | exception _ => failwith "Field `type` not found inside `repository`"
+                  | _ => failwith "Field `type` should be a string."
+                  };
+                let ending = ref true;
+                for i in 0 to (String.length t - 1) {
+                  let j = String.length url - 1 - i;
+                  if (t.[String.length t - 1 - i] != url.[j]) {
+                    ending := false
+                  }
+                };
+                let homepage =
+                  if (not !ending) {
+                    pr b "dev-repo: \"%s.%s\"\n" url t;
+                    url
+                  } else {
+                    pr b "dev-repo: \"%s\"\n" url;
+                    /* Remove the end and the dot. */
+                    String.sub url 0 (String.length url - String.length t - 1) 
+                  };
+                if (not homepage_found) {
+                  pr b "homepage: \"%s\"\n" homepage
+                };
+                if (not bugs_found) {
+                  pr b "bug-reports: \"%s/issues\"\n" homepage
+                }
               | exception _ => failwith "Field `repository` not found."
               | _ => failwith "Field `repository` should be an object with a `type` and a `url`."
               };

@@ -15,6 +15,9 @@
     "webpack": "*"
   },
   "opam": {
-    "type": "binary"
+    "type": "binary",
+    "dependencies": {
+      "reason": "build & >=  \"1.13.3\""
+    },
   }
 }
