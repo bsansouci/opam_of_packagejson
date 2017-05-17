@@ -1,0 +1,7 @@
+# opam_of_packagejson
+
+bin: [
+  "_build/src/opam_of_packagejson.native" {"opam_of_packagejson.exe"} ]
+lib: [
+  "./META" {"META"}
+  "./opam" {"opam"} ]

@@ -1,0 +1,5 @@
+version = "0.0.8"
+description = "Simple tool to generate META, opam and .install files."
+
+archive(byte) = "opam_of_packagejson.cma"
+archive(native) = "opam_of_packagejson.cmxa"

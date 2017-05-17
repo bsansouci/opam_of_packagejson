@@ -1,0 +1,9 @@
+opam-version: "1.2"
+version: "0.0.8"
+dev-repo: "https://github.com/bsansouci/opam_of_packagejson.git"
+maintainer: "Benjamin San Souci <benjamin.sansouci@gmail.com>"
+authors: [ "Benjamin San Souci <benjamin.sansouci@gmail.com>" ]
+build: [
+  [ make "build" ]
+]
+available: [ ocaml-version >= "4.02" & ocaml-version < "4.05" ]
