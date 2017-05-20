@@ -72,7 +72,9 @@ Here's a full package.json with all of the possible options commented:
     /* Alternate control over the library name on opam */
     "libraryName": "immutable",
     /* main module name to determine the name of the main build artifact to expose */
-    "mainModule": "Immutable"
+    "mainModule": "Immutable",
+    /* The type of the code, either a library or a binary */
+    "type": "library"
   }
 }
 ``` 
