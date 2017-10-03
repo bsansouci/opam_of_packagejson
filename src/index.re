@@ -14,7 +14,7 @@ module Run
     let destination = ref ".";
     let batch_files = ref [];
     let collect_files filename => batch_files := [filename, ...!batch_files];
-    let usage = "Usage: opam_of_pkgjson.exe [options] package.json";
+    let usage = "Usage: opam_of_packagejson.exe [options] package.json";
     Arg.parse
       [
         (
@@ -41,6 +41,15 @@ module Run
       collect_files
       usage;
 
+    /** @GoodDefaults If there are no arguments passed we'll do the right thing ! */
+    switch Sys.argv {
+    | [|_|] =>
+      should_gen_install := true;
+      should_gen_meta := true;
+      should_gen_opam := true
+    | _ => ()
+    };
+
     /** Double check that the directory given is all good. */
     if (not (!destination == ".")) {
       switch (Sys.is_directory !destination) {
@@ -54,7 +63,7 @@ module Run
     /** Check the packagejson file */
     let packagejson =
       switch !batch_files {
-      | [] => failwith "Please call opam_of_pkgjson.exe with a json file to convert to opam."
+      | [] => "package.json" /* good defaults baby */
       | [packagejson, ..._] => packagejson
       };
     Io.readJSONFile
@@ -109,6 +118,15 @@ module Run
                 | Str {str} =>
                   pr b "homepage: \"%s\"\n" str;
                   true
+                | Obj {map: innerMap} =>
+                  let url =
+                    switch (StringMap.find "url" innerMap) {
+                    | Str {str} => str
+                    | exception _ => failwith "Field `url` not found inside `homepage`"
+                    | _ => failwith "Field `url` should be a string."
+                    };
+                  pr b "homepage: \"%s\"\n" url;
+                  true
                 | _ => failwith "Field `homepage` wasn't a string."
                 };
               let bugs_found =
@@ -116,6 +134,15 @@ module Run
                 | exception _ => false
                 | Str {str} =>
                   pr b "bug-reports: \"%s\"\n" str;
+                  true
+                | Obj {map: innerMap} =>
+                  let url =
+                    switch (StringMap.find "url" innerMap) {
+                    | Str {str} => str
+                    | exception _ => failwith "Field `url` not found inside `bugs`"
+                    | _ => failwith "Field `url` should be a string."
+                    };
+                  pr b "bug-reports: \"%s\"\n" url;
                   true
                 | _ => failwith "Field `bugs` wasn't a string."
                 };
@@ -154,7 +181,7 @@ module Run
                   } else {
                     pr b "dev-repo: \"%s\"\n" url;
                     /* Remove the end and the dot. */
-                    String.sub url 0 (String.length url - String.length t - 1) 
+                    String.sub url 0 (String.length url - String.length t - 1)
                   };
                 if (not homepage_found) {
                   pr b "homepage: \"%s\"\n" homepage
@@ -167,8 +194,8 @@ module Run
               };
 
               /** Contributors */
-              let hasContributors =
-                switch (StringMap.find "contributors" map) {
+              let printAuthors key =>
+                switch (StringMap.find key map) {
                 | exception _ => false
                 | Arr {content} =>
                   pr b "authors: [\n";
@@ -181,27 +208,76 @@ module Run
                           let name =
                             switch (StringMap.find "name" innerMap) {
                             | exception _ =>
-                              failwith "Field `name` inside `contributor` not found."
+                              failwith @@ Printf.sprintf "Field `name` inside `%s` not found." key
                             | Str {str} => str
                             | _ => failwith "Field `name` should have type string."
                             };
                           let email =
                             switch (StringMap.find "email" innerMap) {
                             | exception _ =>
-                              failwith "Field `email` inside `contributor` not found."
+                              failwith @@ Printf.sprintf "Field `email` inside `%s` not found." key
                             | Str {str} => str
                             | _ => failwith "Field `email` should have type string."
                             };
                           pr b "  \"%s <%s>\"\n" name email
                         | _ =>
-                          failwith "Field `contributor` should be an array of strings or objects with a `name` and `email` fields."
+                          failwith @@
+                          Printf.sprintf
+                            "Field `%s` should be an array of strings or objects with a `name` and `email` fields."
+                            key
                         }
                     )
                     content;
                   pr b "]\n";
                   true
                 | _ =>
-                  failwith "Field `contributor` should be a string or an object containing the fields `name` and `email`."
+                  failwith @@
+                  Printf.sprintf
+                    "Field `%s` should be a string or an object containing the fields `name` and `email`."
+                    key
+                };
+              let hasContributors = printAuthors "contributors";
+              let hasMaintainers =
+                if (not hasContributors) {
+                  let key = "maintainers";
+                  switch (StringMap.find key map) {
+                  | exception _ => false
+                  | Arr {content: [||]} =>
+                    failwith "Empty array found for field `maintainers` please add something in there!"
+                  | Arr {content} =>
+                    switch content.(0) {
+                    | Str {str} => pr b "maintainer: \"%s\"\n" str
+                    | Obj {map: innerMap} =>
+                      let name =
+                        switch (StringMap.find "name" innerMap) {
+                        | exception _ =>
+                          failwith @@ Printf.sprintf "Field `name` inside `%s` not found." key
+                        | Str {str} => str
+                        | _ => failwith "Field `name` should have type string."
+                        };
+                      let email =
+                        switch (StringMap.find "email" innerMap) {
+                        | exception _ =>
+                          failwith @@ Printf.sprintf "Field `email` inside `%s` not found." key
+                        | Str {str} => str
+                        | _ => failwith "Field `email` should have type string."
+                        };
+                      pr b "maintainer: \"%s <%s>\"\n" name email
+                    | _ =>
+                      failwith @@
+                      Printf.sprintf
+                        "Field `%s` should be an array of strings or objects with a `name` and `email` fields."
+                        key
+                    };
+                    true
+                  | _ =>
+                    failwith @@
+                    Printf.sprintf
+                      "Field `%s` should be a string or an object containing the fields `name` and `email`."
+                      key
+                  }
+                } else {
+                  false
                 };
 
               /** `author` can either be "author": "Benjamin San Souci <benjamin.sansouci@gmail.com>" or
@@ -212,32 +288,36 @@ module Run
 
                   Same for contributor.
                   */
-              switch (StringMap.find "author" map) {
-              | exception _ => failwith "Field `author` not found but required."
-              | Str {str} =>
-                pr b "maintainer: \"%s\"\n" str;
-                if (not hasContributors) {
-                  pr b "authors: [ \"%s\" ]\n" str
+              if (not hasMaintainers) {
+                switch (StringMap.find "author" map) {
+                | exception _ => failwith "Field `author` not found but required."
+                | Str {str} =>
+                  pr b "maintainer: \"%s\"\n" str;
+                  if (not hasContributors && not hasMaintainers) {
+                    pr b "authors: [ \"%s\" ]\n" str
+                  }
+                | Obj {map: innerMap} =>
+                  let name =
+                    switch (StringMap.find "name" innerMap) {
+                    | exception _ => failwith "Field `name` inside `author` not found."
+                    | Str {str} => str
+                    | _ => failwith "Field `name` should have type string."
+                    };
+                  let email =
+                    switch (StringMap.find "email" innerMap) {
+                    | exception _ =>
+                      hasContributors || hasMaintainers ?
+                        "" : failwith "Field `email` inside `author` not found."
+                    | Str {str} => str
+                    | _ => failwith "Field `email` should have type string."
+                    };
+                  pr b "maintainer: \"%s <%s>\"\n" name email;
+                  if (not hasContributors && not hasMaintainers) {
+                    pr b "authors: [ \"%s <%s>\" ]\n" name email
+                  }
+                | _ =>
+                  failwith "Field `author` should be a string or an object containing the fields `name` and `email`."
                 }
-              | Obj {map: innerMap} =>
-                let name =
-                  switch (StringMap.find "name" innerMap) {
-                  | exception _ => failwith "Field `name` inside `author` not found."
-                  | Str {str} => str
-                  | _ => failwith "Field `name` should have type string."
-                  };
-                let email =
-                  switch (StringMap.find "email" innerMap) {
-                  | exception _ => failwith "Field `email` inside `author` not found."
-                  | Str {str} => str
-                  | _ => failwith "Field `email` should have type string."
-                  };
-                pr b "maintainer: \"%s <%s>\"\n" name email;
-                if (not hasContributors) {
-                  pr b "authors: [ \"%s <%s>\" ]\n" name email
-                }
-              | _ =>
-                failwith "Field `author` should be a string or an object containing the fields `name` and `email`."
               };
 
               /** Array fields */
@@ -284,9 +364,17 @@ module Run
               pr b "build: [\n";
               pr b "  [ make \"build\" ]\n";
               pr b "]\n";
-
-              /** Ocaml version hardcoded for now */
-              pr b "available: [ ocaml-version >= \"4.02\" & ocaml-version < \"4.05\" ]\n"
+              let ocamlVersion =
+                switch opamMap {
+                | Some opamMap =>
+                  switch (StringMap.find "ocamlVersion" opamMap) {
+                  | exception _ => "ocaml-version >= \"4.02\" & ocaml-version < \"4.05\""
+                  | Str {str} => str
+                  | _ => failwith "Field `ocamlVersion` isn't a string."
+                  }
+                | _ => "ocaml-version >= \"4.02\" & ocaml-version < \"4.05\""
+                };
+              pr b "available: [ %s ]\n" ocamlVersion
             | _ => assert false
             };
             Io.writeFile (!destination +|+ "opam") (Buffer.contents b)
@@ -295,7 +383,7 @@ module Run
             let default_extensions = [".cmo", ".cmx", ".cmi", ".o", ".cma", ".cmxa", ".a"];
             switch json {
             | Obj {map} =>
-              let (libraryName, path, mainModule, installType) =
+              let (libraryName, path, mainModule, installType, installedBinaries) =
                 switch (StringMap.find "opam" map) {
                 | exception _ =>
                   let name =
@@ -304,7 +392,22 @@ module Run
                     | Str {str} => str
                     | _ => failwith "Field `name` didn't exist."
                     };
-                  (name, "_build" +|+ "src", name, `Lib)
+                  (
+                    name,
+                    "_build" +|+ "src",
+                    name,
+                    `Lib,
+                    [
+                      Install.(
+                        `Bin,
+                        {
+                          src: "_build" +|+ "src" +|+ (name ^ ".native"),
+                          dst: Some (name ^ ".exe"),
+                          maybe: false
+                        }
+                      )
+                    ]
+                  )
                 | Obj {map: innerMap} =>
                   let libraryName =
                     switch (StringMap.find "libraryName" innerMap) {
@@ -343,8 +446,41 @@ module Run
                     | Str {str} => str
                     | _ => failwith "Field `mainModule` inside field `opam` isn't a simple string."
                     };
-                  (libraryName, path, mainModule, installType)
-                | _ => assert false
+                  let installedBinaries =
+                    switch (StringMap.find "binaries" innerMap) {
+                    | exception Not_found => [
+                        Install.(
+                          `Bin,
+                          {
+                            src: path +|+ (mainModule ^ ".native"),
+                            dst: Some (mainModule ^ ".exe"),
+                            maybe: false
+                          }
+                        )
+                      ]
+                    | Obj {map: innerMap} =>
+                      StringMap.fold
+                        (
+                          fun srcPath execName acc =>
+                            switch execName {
+                            | Str {str: execName} => [
+                                Install.(`Bin, {src: srcPath, dst: Some execName, maybe: false}),
+                                ...acc
+                              ]
+                            | _ =>
+                              failwith @@
+                              Printf.sprintf
+                                "The value of the key `%s` inside `binaries` should be a string."
+                                srcPath
+                            }
+                        )
+                        innerMap
+                        []
+                    | _ =>
+                      failwith "Field `binaries` should be an object with {'path/to/binary': 'binaryName' }"
+                    };
+                  (libraryName, path, mainModule, installType, installedBinaries)
+                | _ => failwith "Field `opam` was not an object."
                 };
               let rest =
                 switch installType {
@@ -361,16 +497,7 @@ module Run
                       )
                     )
                     default_extensions
-                | `Bin => [
-                    Install.(
-                      `Bin,
-                      {
-                        src: path +|+ (mainModule ^ ".native"),
-                        dst: Some (mainModule ^ ".exe"),
-                        maybe: false
-                      }
-                    )
-                  ]
+                | `Bin => installedBinaries
                 };
 
               /** Generate the .install file */

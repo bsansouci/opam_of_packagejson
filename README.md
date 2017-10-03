@@ -50,6 +50,8 @@ Here's a full package.json with all of the possible options commented:
   },
   /* the `authors` field in the `opam` file */
   "contributors": [{ "name": "Dave Bordoley", "email": "bordoley@gmail.com" }],
+  /* the `maintainer` field in the `opam` file, for simplicity we take the first maintainer (opam doesn't support multiple maintainers :( ) */
+  "maintainers": [{ "name": "Dave Bordoley", "email": "bordoley@gmail.com" }],
   /* the `license` field in the `opam` file. */
   "license": "BSD-3-Clause",
   /* the `dev-repo` field mainly, but can be used for the `homepage` and the `bug-reports` fields too if their respective fields are missing from the package.json. */
@@ -64,8 +66,7 @@ Here's a full package.json with all of the possible options commented:
   "opam": {
     /* the `depends` field. Look at https://opam.ocaml.org/doc/1.1/Packaging.html#Versionconstraints for help on how the constrain solver works */  
     "dependencies": {
-      "reason": "build & >=  \"1.13.3\"",
-       "opam_of_packagejson": "build & >= \"0.1.2\""
+      "reason": "build & >=  \"1.13.3\""
     },
     /* path where the library artifacts (`.cma`/`cmxa`) are built */
     "installPath": "_build/src",
@@ -73,9 +74,18 @@ Here's a full package.json with all of the possible options commented:
     "libraryName": "immutable",
     /* main module name to determine the name of the main build artifact to expose */
     "mainModule": "Immutable",
-    /* The type of the code, either a library or a binary */
-    "type": "library"
+    /* The type of the code, either "library" or "binary" */
+    "type": "library",
+    /* mapping from binary path to globally exposed name, used when making a command-line tool for example */
+    "binaries": {
+      "./bin/bsc.exe": "bsc.exe", // Path is relative to the project's directory
+      "./bin/bsb.exe": "bsb.exe",
+    }
   }
 }
 ``` 
 
+
+## Dev
+[bsb-native](https://github.com/bsansouci/bsb-native) is not yet on opam, but we'd like this tool to be so we can't depend on bsb-native. To build simply run `make`.
+I'm working on fixing this as soon as possible.
