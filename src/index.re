@@ -77,7 +77,7 @@ module Run
             let pr_field b key value => pr b "%s: \"%s\"\n" key value;
             let (||>>) m field =>
               switch (StringMap.find field m) {
-              | exception _ => m
+              | exception Not_found => m
               | Str {str} =>
                 pr_field b field str;
                 m
@@ -89,7 +89,7 @@ module Run
               pr b "opam-version: \"1.2\"\n";
               let opamMap =
                 switch (StringMap.find "opam" map) {
-                | exception _ => None
+                | exception Not_found => None
                 | Obj {map: innerMap} => Some innerMap
                 | _ => assert false
                 };
@@ -97,9 +97,9 @@ module Run
               | Some opamMap =>
                 let name =
                   switch (StringMap.find "libraryName" opamMap) {
-                  | exception _ =>
+                  | exception Not_found =>
                     switch (StringMap.find "name" map) {
-                    | exception _ => failwith "Field `name` doesn't exist."
+                    | exception Not_found => failwith "Field `name` doesn't exist."
                     | Str {str} => str
                     | _ => failwith "Field `name` doesn't exist."
                     }
@@ -114,7 +114,7 @@ module Run
               ignore @@ (map ||>> "version" ||>> "license" ||>> "tags");
               let homepage_found =
                 switch (StringMap.find "homepage" map) {
-                | exception _ => false
+                | exception Not_found => false
                 | Str {str} =>
                   pr b "homepage: \"%s\"\n" str;
                   true
@@ -122,7 +122,7 @@ module Run
                   let url =
                     switch (StringMap.find "url" innerMap) {
                     | Str {str} => str
-                    | exception _ => failwith "Field `url` not found inside `homepage`"
+                    | exception Not_found => failwith "Field `url` not found inside `homepage`"
                     | _ => failwith "Field `url` should be a string."
                     };
                   pr b "homepage: \"%s\"\n" url;
@@ -131,7 +131,7 @@ module Run
                 };
               let bugs_found =
                 switch (StringMap.find "bugs" map) {
-                | exception _ => false
+                | exception Not_found => false
                 | Str {str} =>
                   pr b "bug-reports: \"%s\"\n" str;
                   true
@@ -139,7 +139,7 @@ module Run
                   let url =
                     switch (StringMap.find "url" innerMap) {
                     | Str {str} => str
-                    | exception _ => failwith "Field `url` not found inside `bugs`"
+                    | exception Not_found => failwith "Field `url` not found inside `bugs`"
                     | _ => failwith "Field `url` should be a string."
                     };
                   pr b "bug-reports: \"%s\"\n" url;
@@ -158,13 +158,13 @@ module Run
                 let url =
                   switch (StringMap.find "url" innerMap) {
                   | Str {str} => str
-                  | exception _ => failwith "Field `url` not found inside `repository`"
+                  | exception Not_found => failwith "Field `url` not found inside `repository`"
                   | _ => failwith "Field `url` should be a string."
                   };
                 let t =
                   switch (StringMap.find "type" innerMap) {
                   | Str {str} => str
-                  | exception _ => failwith "Field `type` not found inside `repository`"
+                  | exception Not_found => failwith "Field `type` not found inside `repository`"
                   | _ => failwith "Field `type` should be a string."
                   };
                 let ending = ref true;
@@ -189,14 +189,14 @@ module Run
                 if (not bugs_found) {
                   pr b "bug-reports: \"%s/issues\"\n" homepage
                 }
-              | exception _ => failwith "Field `repository` not found."
+              | exception Not_found => failwith "Field `repository` not found."
               | _ => failwith "Field `repository` should be an object with a `type` and a `url`."
               };
 
               /** Contributors */
               let printAuthors key =>
                 switch (StringMap.find key map) {
-                | exception _ => false
+                | exception Not_found => false
                 | Arr {content} =>
                   pr b "authors: [\n";
                   Array.iter
@@ -207,15 +207,14 @@ module Run
                         | Obj {map: innerMap} =>
                           let name =
                             switch (StringMap.find "name" innerMap) {
-                            | exception _ =>
+                            | exception Not_found =>
                               failwith @@ Printf.sprintf "Field `name` inside `%s` not found." key
                             | Str {str} => str
                             | _ => failwith "Field `name` should have type string."
                             };
                           let email =
                             switch (StringMap.find "email" innerMap) {
-                            | exception _ =>
-                              failwith @@ Printf.sprintf "Field `email` inside `%s` not found." key
+                            | exception Not_found => ""
                             | Str {str} => str
                             | _ => failwith "Field `email` should have type string."
                             };
@@ -230,6 +229,25 @@ module Run
                     content;
                   pr b "]\n";
                   true
+                | Str {str} =>
+                  pr b "authors: [ \"%s\" ]\n" str;
+                  true
+                | Obj {map: innerMap} =>
+                  let name =
+                    switch (StringMap.find "name" innerMap) {
+                    | exception Not_found =>
+                      failwith @@ Printf.sprintf "Field `name` inside `%s` not found." key
+                    | Str {str} => str
+                    | _ => failwith "Field `name` should have type string."
+                    };
+                  let email =
+                    switch (StringMap.find "email" innerMap) {
+                    | exception Not_found => ""
+                    | Str {str} => str
+                    | _ => failwith "Field `email` should have type string."
+                    };
+                  pr b "authors: [ \"%s <%s>\" ]\n" name email;
+                  true
                 | _ =>
                   failwith @@
                   Printf.sprintf
@@ -237,11 +255,12 @@ module Run
                     key
                 };
               let hasContributors = printAuthors "contributors";
+              let hasContributors = not hasContributors && printAuthors "author";
               let hasMaintainers =
                 if (not hasContributors) {
                   let key = "maintainers";
                   switch (StringMap.find key map) {
-                  | exception _ => false
+                  | exception Not_found => false
                   | Arr {content: [||]} =>
                     failwith "Empty array found for field `maintainers` please add something in there!"
                   | Arr {content} =>
@@ -250,14 +269,14 @@ module Run
                     | Obj {map: innerMap} =>
                       let name =
                         switch (StringMap.find "name" innerMap) {
-                        | exception _ =>
+                        | exception Not_found =>
                           failwith @@ Printf.sprintf "Field `name` inside `%s` not found." key
                         | Str {str} => str
                         | _ => failwith "Field `name` should have type string."
                         };
                       let email =
                         switch (StringMap.find "email" innerMap) {
-                        | exception _ =>
+                        | exception Not_found =>
                           failwith @@ Printf.sprintf "Field `email` inside `%s` not found." key
                         | Str {str} => str
                         | _ => failwith "Field `email` should have type string."
@@ -290,7 +309,7 @@ module Run
                   */
               if (not hasMaintainers) {
                 switch (StringMap.find "author" map) {
-                | exception _ => failwith "Field `author` not found but required."
+                | exception Not_found => failwith "Field `author` not found but required."
                 | Str {str} =>
                   pr b "maintainer: \"%s\"\n" str;
                   if (not hasContributors && not hasMaintainers) {
@@ -299,13 +318,13 @@ module Run
                 | Obj {map: innerMap} =>
                   let name =
                     switch (StringMap.find "name" innerMap) {
-                    | exception _ => failwith "Field `name` inside `author` not found."
+                    | exception Not_found => failwith "Field `name` inside `author` not found."
                     | Str {str} => str
                     | _ => failwith "Field `name` should have type string."
                     };
                   let email =
                     switch (StringMap.find "email" innerMap) {
-                    | exception _ =>
+                    | exception Not_found =>
                       hasContributors || hasMaintainers ?
                         "" : failwith "Field `email` inside `author` not found."
                     | Str {str} => str
@@ -322,7 +341,7 @@ module Run
 
               /** Array fields */
               switch (StringMap.find "keywords" map) {
-              | exception _ => ()
+              | exception Not_found => ()
               | Arr {content} =>
                 pr b "tags: [";
                 Array.iter
@@ -339,36 +358,53 @@ module Run
               };
 
               /** Dependencies */
-              switch opamMap {
-              | Some opamMap =>
-                switch (StringMap.find "dependencies" opamMap) {
-                | exception _ => ()
-                | Obj {map: innerMap} =>
-                  pr b "depends: [\n";
-                  StringMap.iter
-                    (
-                      fun key v =>
-                        switch v {
-                        | Str {str} => pr b "  \"%s\" { %s }\n" key str
-                        | _ => assert false
-                        }
-                    )
-                    innerMap;
-                  pr b "]\n"
-                | _ => assert false
-                }
-              | None => ()
-              };
+              let defaultBuildCommand = "[ \"make build\" ]";
+              let buildCommand =
+                switch opamMap {
+                | Some opamMap =>
+                  switch (StringMap.find "dependencies" opamMap) {
+                  | exception Not_found => ()
+                  | Obj {map: innerMap} =>
+                    pr b "depends: [\n";
+                    StringMap.iter
+                      (
+                        fun key v =>
+                          switch v {
+                          | Str {str} => pr b "  \"%s\" { %s }\n" key str
+                          | _ => assert false
+                          }
+                      )
+                      innerMap;
+                    pr b "]\n"
+                  | _ => ()
+                  };
+                  switch (StringMap.find "buildCommand" opamMap) {
+                  | exception Not_found =>
+                    switch (StringMap.find "scripts" map) {
+                    | exception Not_found => defaultBuildCommand
+                    | Obj {map: innerMap} =>
+                      switch (StringMap.find "postinstall" innerMap) {
+                      | exception Not_found => defaultBuildCommand
+                      | Str {str} => Printf.sprintf "[ \"%s\" ]" str
+                      | _ => failwith "Field `postinstall` under `scripts` was not a string."
+                      }
+                    | _ => failwith "Field `scripts` was not an object."
+                    }
+                  | Str {str} => Printf.sprintf "[ \"%s\" ]" str
+                  | _ => failwith "Field `buildCommand` only supports a string for now. See "
+                  }
+                | None => defaultBuildCommand
+                };
 
               /** Build command */
               pr b "build: [\n";
-              pr b "  [ make \"build\" ]\n";
+              pr b "  %s\n" buildCommand;
               pr b "]\n";
               let ocamlVersion =
                 switch opamMap {
                 | Some opamMap =>
                   switch (StringMap.find "ocamlVersion" opamMap) {
-                  | exception _ => "ocaml-version >= \"4.02\" & ocaml-version < \"4.05\""
+                  | exception Not_found => "ocaml-version >= \"4.02\" & ocaml-version < \"4.05\""
                   | Str {str} => str
                   | _ => failwith "Field `ocamlVersion` isn't a string."
                   }
@@ -385,10 +421,10 @@ module Run
             | Obj {map} =>
               let (libraryName, path, mainModule, installType, installedBinaries) =
                 switch (StringMap.find "opam" map) {
-                | exception _ =>
+                | exception Not_found =>
                   let name =
                     switch (StringMap.find "name" map) {
-                    | exception _ => failwith "Field `name` didn't exist."
+                    | exception Not_found => failwith "Field `name` didn't exist."
                     | Str {str} => str
                     | _ => failwith "Field `name` didn't exist."
                     };
@@ -411,9 +447,9 @@ module Run
                 | Obj {map: innerMap} =>
                   let libraryName =
                     switch (StringMap.find "libraryName" innerMap) {
-                    | exception _ =>
+                    | exception Not_found =>
                       switch (StringMap.find "name" map) {
-                      | exception _ => failwith "Field `name` didn't exist."
+                      | exception Not_found => failwith "Field `name` didn't exist."
                       | Str {str} => str
                       | _ => failwith "Field `name` didn't exist."
                       }
@@ -424,22 +460,22 @@ module Run
                   let path =
                     switch (StringMap.find "installPath" innerMap) {
                     /* Default install path is _build/src */
-                    | exception _ => "_build" +|+ "src"
+                    | exception Not_found => "_build" +|+ "src"
                     | Str {str} => str
                     | _ => failwith "Couldn't find a `installPath` field or isn't a simple string."
                     };
                   let installType =
                     switch (StringMap.find "type" innerMap) {
-                    | exception _ => `Lib
+                    | exception Not_found => `Lib
                     | Str {str} when str == "binary" => `Bin
                     | Str {str} when str == "library" => `Lib
                     | _ => failwith "Field `type` should be either \"binary\" or \"library\"."
                     };
                   let mainModule =
                     switch (StringMap.find "mainModule" innerMap) {
-                    | exception _ =>
+                    | exception Not_found =>
                       switch (StringMap.find "name" map) {
-                      | exception _ => failwith "Field `name` doesn't exist."
+                      | exception Not_found => failwith "Field `name` doesn't exist."
                       | Str {str} => str
                       | _ => failwith "Field `name` isn't a simple string."
                       }
@@ -522,17 +558,17 @@ module Run
             | Obj {map} =>
               let mainModule =
                 switch (StringMap.find "opam" map) {
-                | exception _ =>
+                | exception Not_found =>
                   switch (StringMap.find "name" map) {
-                  | exception _ => failwith "Field `name` doesn't exist."
+                  | exception Not_found => failwith "Field `name` doesn't exist."
                   | Str {str} => str
                   | _ => failwith "Field `name` isn't a simple string."
                   }
                 | Obj {map: innerMap} =>
                   switch (StringMap.find "mainModule" innerMap) {
-                  | exception _ =>
+                  | exception Not_found =>
                     switch (StringMap.find "name" map) {
-                    | exception _ => failwith "Field `name` doesn't exist."
+                    | exception Not_found => failwith "Field `name` doesn't exist."
                     | Str {str} => str
                     | _ => failwith "Field `name` isn't a simple string."
                     }
@@ -545,13 +581,13 @@ module Run
               let metab = Buffer.create 1024;
               let version =
                 switch (StringMap.find "version" map) {
-                | exception _ => failwith "Field `version` doesn't exist. "
+                | exception Not_found => failwith "Field `version` doesn't exist. "
                 | Str {str: version} => version
                 | _ => failwith "Field `version` was not a simple string."
                 };
               let description =
                 switch (StringMap.find "description" map) {
-                | exception _ => failwith "Field `description` doesn't exist. "
+                | exception Not_found => failwith "Field `description` doesn't exist. "
                 | Str {str: description} => description
                 | _ => failwith "Field `description` was not a simple string."
                 };
