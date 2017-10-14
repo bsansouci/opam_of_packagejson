@@ -1,2 +1,2 @@
 build:
-	rebuild src/opam_of_packagejson.native
+	rebuild -package unix src/opam_of_packagejson.native

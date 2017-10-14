@@ -14,6 +14,18 @@ module M =
           }
         );
     external writeFile : string => string => unit = "writeFileSync" [@@bs.module "fs"];
+    external exec : string => string = "execSync" [@@bs.module "child_process"];
+    type processStatus =
+      | WEXITED int
+      | WSIGNALED int
+      | WSTOPPED int;
+    let exec cmd =>
+      switch (exec cmd) {
+      | exception e =>
+        Js.log e;
+        assert false
+      | ret => (WEXITED 0, ret)
+      };
   };
 
 M.start ();

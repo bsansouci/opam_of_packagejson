@@ -1,22 +1,27 @@
-module Run
-       (
-         Io: {
-           type err;
-           let readJSONFile: string => (Json_types.t => unit) => unit;
-           let writeFile: string => string => unit;
-         }
-       ) => {
+module Run (Io: Io.t) => {
   let start () => {
     let (+|+) = Filename.concat;
     let should_gen_install = ref false;
     let should_gen_meta = ref false;
     let should_gen_opam = ref false;
     let destination = ref ".";
+    let gitRemote = ref "origin";
     let batch_files = ref [];
+    let publishMode = ref false;
     let collect_files filename => batch_files := [filename, ...!batch_files];
     let usage = "Usage: opam_of_packagejson.exe [options] package.json";
     Arg.parse
       [
+        (
+          "-publish",
+          Arg.Unit (fun () => publishMode := true),
+          "Publish the current package at the current package version."
+        ),
+        (
+          "-git-remote",
+          Arg.String (fun gb => gitRemote := gb),
+          "Publish the current package at the current package version."
+        ),
         (
           "-destination",
           Arg.String (fun str => destination := str),
@@ -71,6 +76,11 @@ module Run
       (
         fun json => {
           open Json_types;
+          let sp = Printf.sprintf;
+          let nocolor = "\027[0m";
+          /*let red s => sp "\027[31m%s%s" s nocolor;*/
+          let blue s => sp "\027[36m%s%s" s nocolor;
+          let green s => sp "\027[32m%s%s" s nocolor;
           if !should_gen_opam {
             let b = Buffer.create 1024;
             let pr b fmt => Printf.bprintf b fmt;
@@ -377,7 +387,7 @@ module Run
               };
 
               /** build command */
-              let defaultBuildCommand = "[ \"make build\" ]";
+              let defaultBuildCommand = "make build";
               let buildCommand =
                 switch opamMap {
                 | Some opamMap =>
@@ -388,42 +398,41 @@ module Run
                     | Obj {map: innerMap} =>
                       switch (StringMap.find "postinstall" innerMap) {
                       | exception Not_found => defaultBuildCommand
-                      | Str {str} =>
-                        let splitChar str ::on =>
-                          if (str == "") {
-                            []
-                          } else {
-                            let rec loop acc offset =>
-                              try {
-                                let index = String.rindex_from str offset on;
-                                if (index == offset) {
-                                  loop ["", ...acc] (index - 1)
-                                } else {
-                                  let token = String.sub str (index + 1) (offset - index);
-                                  loop [token, ...acc] (index - 1)
-                                }
-                              } {
-                              | Not_found => [String.sub str 0 (offset + 1), ...acc]
-                              };
-                            loop [] (String.length str - 1)
-                          };
-                        let commandParts =
-                          List.map (fun l => "\"" ^ l ^ "\"") (splitChar str on::' ');
-                        let str = List.fold_right (fun v acc => v ^ " " ^ acc) commandParts "";
-                        Printf.sprintf "[ %s ]" str
+                      | Str {str} => str
                       | _ => failwith "Field `postinstall` under `scripts` was not a string."
                       }
                     | _ => failwith "Field `scripts` was not an object."
                     }
-                  | Str {str} => Printf.sprintf "[ \"%s\" ]" str
+                  | Str {str} => str
                   | _ => failwith "Field `buildCommand` only supports a string for now."
                   }
                 | None => defaultBuildCommand
                 };
+              let splitChar str ::on =>
+                if (str == "") {
+                  []
+                } else {
+                  let rec loop acc offset =>
+                    try {
+                      let index = String.rindex_from str offset on;
+                      if (index == offset) {
+                        loop ["", ...acc] (index - 1)
+                      } else {
+                        let token = String.sub str (index + 1) (offset - index);
+                        loop [token, ...acc] (index - 1)
+                      }
+                    } {
+                    | Not_found => [String.sub str 0 (offset + 1), ...acc]
+                    };
+                  loop [] (String.length str - 1)
+                };
+              let commandParts =
+                List.map (fun l => "\"" ^ l ^ "\"") (splitChar buildCommand on::' ');
+              let str = List.fold_right (fun v acc => v ^ " " ^ acc) commandParts "";
 
               /** Build command */
               pr b "build: [\n";
-              pr b "  %s\n" buildCommand;
+              pr b "  [ %s ]\n" str;
               pr b "]\n";
               let ocamlVersion =
                 switch opamMap {
@@ -444,7 +453,7 @@ module Run
             let default_extensions = [".cmo", ".cmx", ".cmi", ".o", ".cma", ".cmxa", ".a"];
             switch json {
             | Obj {map} =>
-              let (libraryName, path, mainModule, installType, installedBinaries) =
+              let (libraryName, installList) =
                 switch (StringMap.find "opam" map) {
                 | exception Not_found =>
                   let name =
@@ -455,9 +464,6 @@ module Run
                     };
                   (
                     name,
-                    "_build" +|+ "src",
-                    name,
-                    `Lib,
                     [
                       Install.(
                         `Bin,
@@ -540,25 +546,49 @@ module Run
                     | _ =>
                       failwith "Field `binaries` should be an object with {'path/to/binary': 'binaryName' }"
                     };
-                  (libraryName, path, mainModule, installType, installedBinaries)
+                  let localBinaries =
+                    switch (StringMap.find "localBinaries" innerMap) {
+                    | exception Not_found => []
+                    | Obj {map: innerMap} =>
+                      StringMap.fold
+                        (
+                          fun srcPath execName acc =>
+                            switch execName {
+                            | Str {str: execName} => [
+                                Install.(`Share, {src: srcPath, dst: Some execName, maybe: false}),
+                                ...acc
+                              ]
+                            | _ =>
+                              failwith @@
+                              Printf.sprintf
+                                "The value of the key `%s` inside `binaries` should be a string."
+                                srcPath
+                            }
+                        )
+                        innerMap
+                        []
+                    | _ =>
+                      failwith "Field `binaries` should be an object with {'path/to/binary': 'binaryName' }"
+                    };
+                  let installList =
+                    switch installType {
+                    | `Lib =>
+                      List.map
+                        Install.(
+                          fun str => (
+                            `Lib,
+                            {
+                              src: path +|+ (mainModule ^ str),
+                              dst: Some (mainModule ^ str),
+                              maybe: false
+                            }
+                          )
+                        )
+                        default_extensions
+                    | `Bin => installedBinaries @ localBinaries
+                    };
+                  (libraryName, installList)
                 | _ => failwith "Field `opam` was not an object."
-                };
-              let rest =
-                switch installType {
-                | `Lib =>
-                  List.map
-                    Install.(
-                      fun str => (
-                        `Lib,
-                        {
-                          src: path +|+ (mainModule ^ str),
-                          dst: Some (mainModule ^ str),
-                          maybe: false
-                        }
-                      )
-                    )
-                    default_extensions
-                | `Bin => installedBinaries
                 };
 
               /** Generate the .install file */
@@ -568,7 +598,7 @@ module Run
                   [
                     (`Lib, {src: !destination +|+ "opam", dst: Some "opam", maybe: false}),
                     (`Lib, {src: !destination +|+ "META", dst: Some "META", maybe: false}),
-                    ...rest
+                    ...installList
                   ]
                 );
               Io.writeFile
@@ -633,6 +663,95 @@ module Run
                 pr metab "archive(native) = \"%s.cmxa\"\n" mainModule
               };
               Io.writeFile (!destination +|+ "META") (Buffer.contents metab)
+            | _ => assert false
+            }
+          };
+          if !publishMode {
+            /* Will print the command followed by its output */
+            let printAndExec s => {
+              let (_, ret) = Io.exec s;
+              if (String.length ret > 0) {
+                print_endline @@ sp "%s: %s" (green s) ret
+              } else {
+                print_endline (green s)
+              }
+            };
+            switch json {
+            | Obj {map} =>
+              let versionNumber =
+                switch (StringMap.find "version" map) {
+                | Str {str: versionNumber} => versionNumber
+                | _ => assert false
+                };
+              let packageName =
+                switch (StringMap.find "opam" map) {
+                | exception Not_found =>
+                  switch (StringMap.find "name" map) {
+                  | Str {str: packageName} => packageName
+                  | _ => assert false
+                  }
+                | Obj {map: innerMap} =>
+                  switch (StringMap.find "libraryName" innerMap) {
+                  | exception Not_found =>
+                    switch (StringMap.find "name" map) {
+                    | Str {str: packageName} => packageName
+                    | _ => assert false
+                    }
+                  | Str {str} => str
+                  | _ => assert false
+                  }
+                | _ => assert false
+                };
+              printAndExec (sp "git tag %s" versionNumber);
+              printAndExec (sp "git push %s %s" !gitRemote versionNumber);
+              let (_, currentRemoteURL) = Io.exec (sp "git config --get remote.%s.url" !gitRemote);
+              let currentRemoteURL = String.trim currentRemoteURL;
+              let isEndGit =
+                String.sub currentRemoteURL (String.length currentRemoteURL - 4) 4 === ".git";
+              /* Remove the ".git" at the end */
+              let currentRemoteURL =
+                if isEndGit {
+                  String.sub currentRemoteURL 0 (String.length currentRemoteURL - 4)
+                } else {
+                  currentRemoteURL
+                };
+              let getArchiveCmd =
+                sp
+                  "opam-publish prepare %s.%s %s/archive/%s.tar.gz"
+                  packageName
+                  versionNumber
+                  currentRemoteURL
+                  versionNumber;
+              let code = ref (-1);
+              let (c, _) = Io.exec getArchiveCmd;
+              switch c {
+              | Io.WEXITED c => code := c
+              | Io.WSIGNALED _
+              | Io.WSTOPPED _ => failwith (sp "Command %s was killed." getArchiveCmd)
+              };
+              while (!code !== 0) {
+                let (c, _) = Io.exec getArchiveCmd;
+                switch c {
+                | Io.WEXITED c => code := c
+                | Io.WSIGNALED _
+                | Io.WSTOPPED _ => failwith (sp "Command %s was killed." getArchiveCmd)
+                };
+                print_endline (sp "Waiting for github to archive %s.%s" packageName versionNumber);
+                Unix.sleep 1
+              };
+              ignore @@ Io.exec (sp "cp opam %s.%s/opam" packageName versionNumber);
+              let description =
+                switch (StringMap.find "description" map) {
+                | Str {str} => str
+                | _ => assert false
+                };
+              Io.writeFile
+                (sp "%s.%s/descr" packageName versionNumber)
+                (sp "%s\n\n%s" description description);
+              print_endline (
+                sp "run: %s" (blue (sp "opam-publish submit ./%s.%s" packageName versionNumber))
+              )
+            /*printAndExec (sp "opam-publish submit ./%s.%s" packageName versionNumber)*/
             | _ => assert false
             }
           }
